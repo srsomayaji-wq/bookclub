@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book List – Sri's Book Recommendations</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f4f4f5;
+      --card: #ffffff;
+      --text: #1a1a1a;
+      --text-muted: #71717a;
+      --border: #e4e4e7;
+      --input-bg: #fafafa;
+      --btn-bg: #27272a;
+      --btn-danger: #dc2626;
+      --btn-ghost: #f4f4f5;
+      --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      --green: #16a34a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 2rem 1.5rem 3rem;
+    }
+
+    .page {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: none;
+      margin-bottom: 2rem;
+    }
+    .back-link:hover { color: var(--text); }
+
+    header { text-align: center; margin-bottom: 2rem; }
+
+    h1 {
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    .subtitle {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+    }
+
+    /* Search bar */
+    .search-bar {
+      margin-bottom: 1.5rem;
+    }
+
+    .search-bar input {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .search-bar input:focus {
+      outline: none;
+      border-color: var(--text-muted);
+    }
+
+    /* Book count */
+    .book-count {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    /* Book list */
+    .book-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .book-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      transition: border-color 0.15s;
+    }
+
+    /* Admin mode: rows are clickable */
+    .admin-mode .book-row {
+      cursor: pointer;
+    }
+    .admin-mode .book-row:hover {
+      border-color: var(--text-muted);
+    }
+
+    .book-row-cover {
+      width: 48px;
+      height: 72px;
+      object-fit: cover;
+      border-radius: 4px;
+      background: var(--bg);
+      flex-shrink: 0;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .book-row-cover.loaded {
+      opacity: 1;
+    }
+
+    .book-row-info { flex: 1; min-width: 0; }
+    .book-row-title { font-weight: 600; font-size: 0.95rem; }
+    .book-row-author { font-size: 0.85rem; color: var(--text-muted); }
+    .book-row-meta {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.15rem;
+    }
+
+    /* Edit hint only visible in admin mode */
+    .book-row-edit-hint {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      display: none;
+    }
+    .admin-mode .book-row-edit-hint {
+      display: inline;
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: var(--text-muted);
+    }
+
+    /* Modal overlay — only used in admin mode */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 1rem;
+    }
+    .modal-overlay.hidden { display: none; }
+
+    .modal {
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+      width: 100%;
+      max-width: 520px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 1.75rem;
+    }
+
+    .modal h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+    }
+
+    .modal-field { margin-bottom: 1rem; }
+
+    .modal-field label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.3rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .modal-field input,
+    .modal-field select {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .modal-field input:focus,
+    .modal-field select:focus {
+      outline: none;
+      border-color: var(--text-muted);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .modal-actions button {
+      flex: 1;
+      min-width: 100px;
+      padding: 0.7rem 1rem;
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .btn-save-edit {
+      background: var(--btn-bg);
+      color: #fff;
+    }
+    .btn-save-edit:hover { opacity: 0.9; }
+
+    .btn-cancel {
+      background: var(--btn-ghost);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-cancel:hover { background: var(--border); }
+
+    .btn-delete {
+      background: var(--btn-danger);
+      color: #fff;
+      flex: 0;
+      min-width: 80px;
+    }
+    .btn-delete:hover { opacity: 0.9; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      padding: 0.75rem 1.25rem;
+      background: var(--text);
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 500;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 200;
+      opacity: 0;
+      transform: translateY(0.5rem);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { background: var(--green); }
+    .toast.error { background: var(--btn-danger); }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-muted);
+    }
+
+    /* Admin badge */
+    .admin-badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: var(--green);
+      color: #fff;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+    }
+
+    /* ── Responsive ── */
+
+    /* Mobile */
+    @media (max-width: 520px) {
+      body {
+        padding: 1.5rem 1rem 2.5rem;
+      }
+
+      .back-link {
+        margin-bottom: 1.25rem;
+      }
+
+      header {
+        margin-bottom: 1.25rem;
+      }
+
+      h1 {
+        font-size: 1.35rem;
+      }
+
+      .book-row {
+        padding: 0.75rem 1rem;
+        gap: 0.75rem;
+      }
+
+      .book-row-cover {
+        width: 40px;
+        height: 60px;
+      }
+
+      .book-row-title {
+        font-size: 0.9rem;
+      }
+
+      .book-row-author {
+        font-size: 0.8rem;
+      }
+
+      .book-row-meta {
+        font-size: 0.75rem;
+      }
+
+      .book-row-edit-hint {
+        font-size: 0.75rem;
+      }
+
+      /* Modal: full-width on mobile */
+      .modal {
+        max-width: 100%;
+        padding: 1.25rem;
+        border-radius: 10px;
+      }
+
+      .modal h2 {
+        font-size: 1.05rem;
+      }
+
+      .modal-field input,
+      .modal-field select {
+        font-size: 0.9rem;
+        padding: 0.55rem 0.65rem;
+      }
+
+      .modal-actions {
+        gap: 0.5rem;
+      }
+
+      .modal-actions button {
+        font-size: 0.85rem;
+        padding: 0.6rem 0.75rem;
+        min-width: 70px;
+      }
+
+      .toast {
+        left: 1rem;
+        right: 1rem;
+        bottom: 1rem;
+        text-align: center;
+      }
+    }
+
+    /* Very narrow mobile: stack modal buttons */
+    @media (max-width: 380px) {
+      .modal-actions {
+        flex-direction: column;
+      }
+
+      .modal-actions button {
+        width: 100%;
+        min-width: unset;
+      }
+
+      .btn-delete {
+        flex: 1;
+      }
+    }
+
+    /* Tablet */
+    @media (min-width: 521px) and (max-width: 768px) {
+      body {
+        padding: 2rem 1.5rem 3rem;
+      }
+
+      .modal {
+        max-width: 480px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page" id="page">
+    <a href="index.html" class="back-link">← Back to Home</a>
+
+    <header>
+      <h1>Book List<span class="admin-badge" id="admin-badge" style="display:none;">Admin</span></h1>
+      <p class="subtitle" id="page-subtitle">Browse Sri's book collection</p>
+    </header>
+
+    <div class="search-bar">
+      <input type="text" id="search-input" placeholder="Search by title, author, or ID…" autocomplete="off">
+    </div>
+
+    <p class="book-count" id="book-count"></p>
+
+    <div id="loading" class="loading">Loading books…</div>
+    <div id="empty" class="empty-state" style="display:none;">
+      <p>No books in the collection yet.</p>
+    </div>
+
+    <ul class="book-list" id="book-list" style="display:none;"></ul>
+  </div>
+
+  <!-- Edit modal (only functional in admin mode) -->
+  <div class="modal-overlay hidden" id="modal-overlay">
+    <div class="modal" id="edit-modal">
+      <h2 id="modal-title">Edit Book</h2>
+      <form id="edit-form">
+        <div class="modal-field">
+          <label for="edit-book-id">Book ID</label>
+          <input type="text" id="edit-book-id" readonly style="opacity:0.6;cursor:not-allowed;">
+        </div>
+        <div class="modal-field">
+          <label for="edit-book-title">Original Title (from CSV)</label>
+          <input type="text" id="edit-book-title" readonly style="opacity:0.6;cursor:not-allowed;">
+        </div>
+        <div class="modal-field">
+          <label for="edit-goodreads-title">Goodreads Title (displayed to user)</label>
+          <input type="text" id="edit-goodreads-title">
+        </div>
+        <div class="modal-field">
+          <label for="edit-cover-search-title">Cover Search Title (used to find cover image)</label>
+          <input type="text" id="edit-cover-search-title">
+        </div>
+        <div class="modal-field">
+          <label for="edit-book-author">Author</label>
+          <input type="text" id="edit-book-author">
+        </div>
+        <div class="modal-field">
+          <label for="edit-sri-rating">Sri Rating</label>
+          <input type="number" id="edit-sri-rating" step="0.1" min="0" max="5">
+        </div>
+        <div class="modal-field">
+          <label for="edit-gr-avg">Goodreads Avg Rating</label>
+          <input type="number" id="edit-gr-avg" step="0.01" min="0" max="5">
+        </div>
+        <div class="modal-field">
+          <label for="edit-gr-count">Goodreads Rating Count</label>
+          <input type="number" id="edit-gr-count" step="1" min="0">
+        </div>
+        <div class="modal-field">
+          <label for="edit-page-count">Page Count</label>
+          <input type="number" id="edit-page-count" step="1" min="0">
+        </div>
+        <div class="modal-field">
+          <label for="edit-genre">Genre / Intent</label>
+          <input type="text" id="edit-genre">
+        </div>
+        <div class="modal-field">
+          <label for="edit-pace">Pace</label>
+          <input type="text" id="edit-pace">
+        </div>
+        <div class="modal-field">
+          <label for="edit-plot-char">Plot / Character</label>
+          <input type="text" id="edit-plot-char">
+        </div>
+        <div class="modal-field">
+          <label for="edit-mood">Mood / Finish</label>
+          <input type="text" id="edit-mood">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-delete" id="btn-delete">Delete</button>
+          <button type="button" class="btn-cancel" id="btn-cancel">Cancel</button>
+          <button type="submit" class="btn-save-edit">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    (function () {
+      var API = window.location.hostname === 'localhost'
+        ? 'http://localhost:8000'
+        : 'https://YOUR-BACKEND-NAME.onrender.com';
+
+      // ---- Admin mode detection -----------------------------------------------
+      // Admin mode is enabled by visiting booklist.html?admin=YOUR_SECRET_KEY
+      // The key is checked against the backend via X-Admin-Key header.
+      var params = new URLSearchParams(window.location.search);
+      var adminKey = params.get('admin') || '';
+      var isAdmin = false;
+
+      // We'll verify the key by making a test call to a protected endpoint.
+      // For now, set up UI based on the presence of the key; actual verification
+      // happens on the first write operation.
+      if (adminKey) {
+        isAdmin = true;
+        document.getElementById('page').classList.add('admin-mode');
+        document.getElementById('admin-badge').style.display = '';
+        document.getElementById('page-subtitle').textContent = 'Search, view and edit book details';
+      }
+
+      var allBooks = [];
+      var editingBookId = null;
+
+      // Pagination state
+      var PAGE_SIZE = 10;
+      var loadedCount = 0;
+      var totalCount = 0;
+      var isLoadingMore = false;
+      var allLoaded = false;
+      var isSearching = false;
+
+      var listEl = document.getElementById('book-list');
+      var loadingEl = document.getElementById('loading');
+      var emptyEl = document.getElementById('empty');
+      var countEl = document.getElementById('book-count');
+      var searchEl = document.getElementById('search-input');
+      var modalOverlay = document.getElementById('modal-overlay');
+      var editForm = document.getElementById('edit-form');
+
+      // ---- Toast ------------------------------------------------------------
+
+      function showToast(msg, type) {
+        var toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.className = 'toast show' + (type ? ' ' + type : '');
+        clearTimeout(toast._t);
+        toast._t = setTimeout(function () { toast.className = 'toast'; }, 2500);
+      }
+
+      // ---- Admin headers for write requests ---------------------------------
+
+      function adminHeaders() {
+        return {
+          'Content-Type': 'application/json',
+          'X-Admin-Key': adminKey
+        };
+      }
+
+      // ---- Sorting helpers ---------------------------------------------------
+
+      function grPopularity(book) {
+        var r = parseFloat(book.goodreads_avg_rating) || 0;
+        var v = parseInt(book.goodreads_rating_count) || 0;
+        return r * Math.log(1 + v);
+      }
+
+      function bookSortKey(book) {
+        var sri = parseFloat(book.sri_Rating) || 0;
+        return [-sri, -grPopularity(book)];
+      }
+
+      function compareBooks(a, b) {
+        var ka = bookSortKey(a);
+        var kb = bookSortKey(b);
+        for (var i = 0; i < ka.length; i++) {
+          if (ka[i] < kb[i]) return -1;
+          if (ka[i] > kb[i]) return 1;
+        }
+        return 0;
+      }
+
+      // ---- Fetch all books, resolve covers, then sort & display -------------
+
+      // sortedBooks holds the final display order (with-cover first, then without)
+      var sortedBooks = [];
+      var displayedCount = 0;
+
+      function fetchBooks() {
+        loadingEl.style.display = '';
+        loadingEl.textContent = 'Loading books…';
+        listEl.style.display = 'none';
+        emptyEl.style.display = 'none';
+        listEl.innerHTML = '';
+        allBooks = [];
+        sortedBooks = [];
+        displayedCount = 0;
+        loadedCount = 0;
+        totalCount = 0;
+        allLoaded = false;
+        isSearching = false;
+
+        fetch(API + '/books/all?offset=0&limit=0')
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            allBooks = data.books || [];
+            totalCount = data.count || 0;
+            loadedCount = allBooks.length;
+            allLoaded = true;
+
+            loadingEl.style.display = 'none';
+
+            if (totalCount === 0) {
+              listEl.style.display = 'none';
+              emptyEl.style.display = '';
+              countEl.textContent = '';
+              return;
+            }
+
+            emptyEl.style.display = 'none';
+            listEl.style.display = '';
+            countEl.textContent = totalCount + ' book' + (totalCount !== 1 ? 's' : '') + ' in collection';
+
+            // Resolve all cover URLs in parallel
+            loadingEl.style.display = '';
+            loadingEl.textContent = 'Loading covers…';
+
+            var coverPromises = allBooks.map(function (book) {
+              var title = book.cover_search_title || book.book_title || '';
+              var author = book.book_author || '';
+              return fetchBookCover(title, author).then(function (url) {
+                book._coverUrl = url || '';
+                return book;
+              });
+            });
+
+            Promise.all(coverPromises).then(function () {
+              loadingEl.style.display = 'none';
+
+              // Split into with-cover and without-cover, sort each group
+              var withCover = [];
+              var withoutCover = [];
+              allBooks.forEach(function (book) {
+                if (book._coverUrl) {
+                  withCover.push(book);
+                } else {
+                  withoutCover.push(book);
+                }
+              });
+
+              withCover.sort(compareBooks);
+              withoutCover.sort(compareBooks);
+
+              sortedBooks = withCover.concat(withoutCover);
+              // Update allBooks to sorted order for search
+              allBooks = sortedBooks;
+
+              // Display first page
+              showNextPage();
+            });
+          })
+          .catch(function () {
+            loadingEl.textContent = 'Could not connect to the server. Is it running on port 8000?';
+          });
+      }
+
+      function showNextPage() {
+        var end = Math.min(displayedCount + PAGE_SIZE, sortedBooks.length);
+        for (var i = displayedCount; i < end; i++) {
+          listEl.appendChild(createBookRow(sortedBooks[i]));
+        }
+        displayedCount = end;
+      }
+
+      function createBookRow(book) {
+        var li = document.createElement('li');
+        li.className = 'book-row';
+        li.setAttribute('data-id', book.book_ID || '');
+        var displayTitle = book.goodreads_title || book.book_title || '';
+        var coverUrl = book._coverUrl || '';
+        li.innerHTML =
+          '<img class="book-row-cover' + (coverUrl ? '' : '') + '" alt="" loading="lazy">' +
+          '<div class="book-row-info">' +
+            '<div class="book-row-title">' + esc(displayTitle) + '</div>' +
+            '<div class="book-row-author">by ' + esc(book.book_author) + '</div>' +
+            '<div class="book-row-meta">' +
+              esc(book.Genre_Intent || '–') + ' · ' +
+              esc(book.Pace || '–') + ' · ' +
+              (book.page_count || '?') + ' pages · ' +
+              'Rating: ' + (book.sri_Rating || '–') +
+            '</div>' +
+          '</div>' +
+          '<span class="book-row-edit-hint">Edit →</span>';
+        if (isAdmin) {
+          li.addEventListener('click', function () { openEditModal(book); });
+        }
+        // Set cover image if available (already resolved)
+        var imgEl = li.querySelector('.book-row-cover');
+        if (coverUrl) {
+          imgEl.onload = function () { imgEl.classList.add('loaded'); };
+          imgEl.src = coverUrl;
+        }
+        return li;
+      }
+
+      // ---- Render filtered books (for search) --------------------------------
+
+      function renderFilteredBooks(books) {
+        listEl.innerHTML = '';
+        if (books.length === 0) {
+          countEl.textContent = 'No books match your search.';
+          listEl.style.display = 'none';
+          emptyEl.style.display = 'none';
+          return;
+        }
+        emptyEl.style.display = 'none';
+        listEl.style.display = '';
+        countEl.textContent = books.length + ' book' + (books.length !== 1 ? 's' : '') + ' found';
+        books.forEach(function (book) {
+          listEl.appendChild(createBookRow(book));
+        });
+      }
+
+      // ---- Infinite scroll --------------------------------------------------
+
+      window.addEventListener('scroll', function () {
+        if (isSearching || displayedCount >= sortedBooks.length) return;
+        // Trigger when user is within 200px of the bottom
+        var scrollBottom = window.innerHeight + window.scrollY;
+        if (scrollBottom >= document.body.offsetHeight - 200) {
+          showNextPage();
+        }
+      });
+
+      function esc(s) {
+        if (!s) return '';
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+
+      // ---- Cover image fetching (Open Library → Google Books) ---------------
+
+      var placeholderCover = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="72" viewBox="0 0 48 72"%3E%3Crect fill="%23e4e4e7" width="48" height="72"/%3E%3C/svg%3E';
+
+      function fetchCoverFromOpenLibrary(title, author) {
+        if (!title) return Promise.resolve('');
+        var params = 'title=' + encodeURIComponent(title);
+        if (author) params += '&author=' + encodeURIComponent(author);
+        var url = 'https://openlibrary.org/search.json?' + params + '&limit=5&fields=cover_i,title';
+        return fetch(url)
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            var docs = data.docs || [];
+            for (var i = 0; i < docs.length; i++) {
+              if (docs[i].cover_i) {
+                return 'https://covers.openlibrary.org/b/id/' + docs[i].cover_i + '-S.jpg';
+              }
+            }
+            return '';
+          })
+          .catch(function () { return ''; });
+      }
+
+      function fetchCoverFromGoogle(title, author) {
+        if (!title) return Promise.resolve('');
+        var q = 'intitle:' + title;
+        if (author) q += '+inauthor:' + author;
+        var url = 'https://www.googleapis.com/books/v1/volumes?q=' +
+          encodeURIComponent(q) + '&maxResults=3';
+        return fetch(url)
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            var items = (data && data.items) || [];
+            for (var i = 0; i < items.length; i++) {
+              var vol = items[i].volumeInfo;
+              if (vol && vol.imageLinks) {
+                var imgUrl = vol.imageLinks.smallThumbnail || vol.imageLinks.thumbnail || '';
+                if (imgUrl) return imgUrl.replace(/^http:/, 'https:');
+              }
+            }
+            return '';
+          })
+          .catch(function () { return ''; });
+      }
+
+      // ---- Cover cache (localStorage) ----
+      var COVER_CACHE_KEY = 'bookCoverCache';
+
+      function getCoverCache() {
+        try {
+          return JSON.parse(localStorage.getItem(COVER_CACHE_KEY)) || {};
+        } catch (e) { return {}; }
+      }
+
+      function setCoverCache(key, url) {
+        try {
+          var cache = getCoverCache();
+          cache[key] = url;
+          localStorage.setItem(COVER_CACHE_KEY, JSON.stringify(cache));
+        } catch (e) {}
+      }
+
+      // ---- Combined: cache → Open Library → Google Books ----
+      function fetchBookCover(title, author) {
+        var cacheKey = (title || '').toLowerCase().trim() + '|' + (author || '').toLowerCase().trim();
+        var cached = getCoverCache()[cacheKey];
+        if (cached !== undefined) return Promise.resolve(cached);
+
+        return fetchCoverFromOpenLibrary(title, author)
+          .then(function (url) {
+            if (url) return url;
+            return fetchCoverFromGoogle(title, author);
+          })
+          .then(function (url) {
+            if (url) return url;
+            return fetchCoverFromOpenLibrary(title, '');
+          })
+          .then(function (url) {
+            setCoverCache(cacheKey, url || '');
+            return url;
+          });
+      }
+
+      // ---- Search / filter --------------------------------------------------
+
+      function filterBooks(q) {
+        return allBooks.filter(function (b) {
+          return (
+            (b.goodreads_title || '').toLowerCase().indexOf(q) !== -1 ||
+            (b.cover_search_title || '').toLowerCase().indexOf(q) !== -1 ||
+            (b.book_title || '').toLowerCase().indexOf(q) !== -1 ||
+            (b.book_author || '').toLowerCase().indexOf(q) !== -1 ||
+            String(b.book_ID || '').toLowerCase().indexOf(q) !== -1
+          );
+        });
+      }
+
+      searchEl.addEventListener('input', function () {
+        var q = searchEl.value.trim().toLowerCase();
+        if (!q) {
+          // Restore paginated view from sortedBooks
+          isSearching = false;
+          listEl.innerHTML = '';
+          displayedCount = 0;
+          countEl.textContent = totalCount + ' book' + (totalCount !== 1 ? 's' : '') + ' in collection';
+          showNextPage();
+          return;
+        }
+        isSearching = true;
+        renderFilteredBooks(filterBooks(q));
+      });
+
+      // ---- Edit modal (admin only) ------------------------------------------
+
+      function openEditModal(book) {
+        if (!isAdmin) return;
+        editingBookId = String(book.book_ID || '');
+        document.getElementById('modal-title').textContent = 'Edit: ' + (book.goodreads_title || book.book_title || 'Book');
+        document.getElementById('edit-book-id').value = book.book_ID || '';
+        document.getElementById('edit-book-title').value = book.book_title || '';
+        document.getElementById('edit-goodreads-title').value = book.goodreads_title || book.book_title || '';
+        document.getElementById('edit-cover-search-title').value = book.cover_search_title || book.book_title || '';
+        document.getElementById('edit-book-author').value = book.book_author || '';
+        document.getElementById('edit-sri-rating').value = book.sri_Rating || '';
+        document.getElementById('edit-gr-avg').value = book.goodreads_avg_rating || '';
+        document.getElementById('edit-gr-count').value = book.goodreads_rating_count || '';
+        document.getElementById('edit-page-count').value = book.page_count || '';
+        document.getElementById('edit-genre').value = book.Genre_Intent || '';
+        document.getElementById('edit-pace').value = book.Pace || '';
+        document.getElementById('edit-plot-char').value = book.Plot_Character || '';
+        document.getElementById('edit-mood').value = book.Mood_Finish || '';
+        modalOverlay.classList.remove('hidden');
+      }
+
+      function closeModal() {
+        modalOverlay.classList.add('hidden');
+        editingBookId = null;
+      }
+
+      document.getElementById('btn-cancel').addEventListener('click', closeModal);
+      modalOverlay.addEventListener('click', function (e) {
+        if (e.target === modalOverlay) closeModal();
+      });
+
+      // ---- Save edits (admin only) ------------------------------------------
+
+      editForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (!isAdmin || !editingBookId) return;
+
+        var body = {
+          book_title: document.getElementById('edit-book-title').value.trim(),
+          goodreads_title: document.getElementById('edit-goodreads-title').value.trim(),
+          cover_search_title: document.getElementById('edit-cover-search-title').value.trim(),
+          book_author: document.getElementById('edit-book-author').value.trim(),
+          sri_Rating: parseFloat(document.getElementById('edit-sri-rating').value) || 0,
+          goodreads_avg_rating: parseFloat(document.getElementById('edit-gr-avg').value) || 0,
+          goodreads_rating_count: parseInt(document.getElementById('edit-gr-count').value, 10) || 0,
+          page_count: parseInt(document.getElementById('edit-page-count').value, 10) || 0,
+          Genre_Intent: document.getElementById('edit-genre').value.trim(),
+          Pace: document.getElementById('edit-pace').value.trim(),
+          Plot_Character: document.getElementById('edit-plot-char').value.trim(),
+          Mood_Finish: document.getElementById('edit-mood').value.trim()
+        };
+
+        fetch(API + '/books/' + encodeURIComponent(editingBookId), {
+          method: 'PUT',
+          headers: adminHeaders(),
+          body: JSON.stringify(body)
+        })
+          .then(function (r) {
+            if (!r.ok) return r.json().then(function (err) { throw err; });
+            return r.json();
+          })
+          .then(function (data) {
+            showToast('Book updated successfully', 'success');
+            closeModal();
+            fetchBooks();
+          })
+          .catch(function (err) {
+            var msg = (err && err.detail) ? err.detail : 'Failed to update book.';
+            showToast(msg, 'error');
+          });
+      });
+
+      // ---- Delete (admin only) ----------------------------------------------
+
+      document.getElementById('btn-delete').addEventListener('click', function () {
+        if (!isAdmin || !editingBookId) return;
+        var title = document.getElementById('edit-book-title').value || editingBookId;
+        if (!confirm('Delete "' + title + '"? This cannot be undone.')) return;
+
+        fetch(API + '/books/' + encodeURIComponent(editingBookId), {
+          method: 'DELETE',
+          headers: { 'X-Admin-Key': adminKey }
+        })
+          .then(function (r) {
+            if (!r.ok) return r.json().then(function (err) { throw err; });
+            return r.json();
+          })
+          .then(function () {
+            showToast('Book deleted', 'success');
+            closeModal();
+            fetchBooks();
+          })
+          .catch(function (err) {
+            var msg = (err && err.detail) ? err.detail : 'Failed to delete book.';
+            showToast(msg, 'error');
+          });
+      });
+
+      // ---- Init -------------------------------------------------------------
+      fetchBooks();
+    })();
+  </script>
+</body>
+</html>
