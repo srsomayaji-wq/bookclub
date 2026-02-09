@@ -845,6 +845,10 @@
       }
 
       if (books.length === 0) {
+        // Distinguish between "no data" (direct navigation) and "no matches" (API returned 0)
+        if (data) {
+          noRecEl.innerHTML = '<p>No books found matching your selection. <a href="index.html">Try different options</a>.</p>';
+        }
         noRecEl.classList.remove('hidden');
         if (cardEl) cardEl.style.display = 'none';
       } else {
