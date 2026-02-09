@@ -42,9 +42,9 @@ CSV_COLUMNS = [
     "goodreads_rating_count",
     "page_count",
     "Genre_Intent",
+    "Mood_Finish",
     "Pace",
     "Plot_Character",
-    "Mood_Finish",
 ]
 
 # All columns stored in the database (CSV columns + ID + derived title fields)
