@@ -626,11 +626,17 @@
             listEl.style.display = '';
             countEl.textContent = totalCount + ' book' + (totalCount !== 1 ? 's' : '') + ' in collection';
 
-            // Resolve all cover URLs in parallel
+            // Use pre-resolved cover URLs from backend; only fetch missing ones
             loadingEl.style.display = '';
             loadingEl.textContent = 'Loading covers…';
 
             var coverPromises = allBooks.map(function (book) {
+              // If backend already resolved the cover, use it directly
+              if (book.cover_image_url) {
+                book._coverUrl = book.cover_image_url;
+                return Promise.resolve(book);
+              }
+              // Fallback: resolve client-side
               var title = book.cover_search_title || book.book_title || '';
               var author = book.book_author || '';
               return fetchBookCover(title, author).then(function (url) {

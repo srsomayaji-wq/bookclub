@@ -14,7 +14,9 @@ import json
 import math
 import os
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote
 
+import httpx
 from fastapi import FastAPI, File, Header, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -49,7 +51,7 @@ CSV_COLUMNS = [
 # - book_ID           : auto-generated sequential integer
 # - goodreads_title   : used for display (defaults to book_title on import)
 # - cover_search_title: used to search for cover images (Open Library / Google Books)
-DB_COLUMNS = ["book_ID"] + CSV_COLUMNS + ["goodreads_title", "cover_search_title"]
+DB_COLUMNS = ["book_ID"] + CSV_COLUMNS + ["goodreads_title", "cover_search_title", "cover_image_url"]
 
 # Genre_Intent is used as a FILTER (not scored).
 # These remaining fields are used for recommendation SCORING.
@@ -99,6 +101,9 @@ def load_db() -> None:
                 migrated = True
             if "cover_search_title" not in book:
                 book["cover_search_title"] = book.get("googlebooks_title", "") or book.get("book_title", "")
+                migrated = True
+            if "cover_image_url" not in book:
+                book["cover_image_url"] = ""
                 migrated = True
             # Remove old field name if present
             book.pop("googlebooks_title", None)
@@ -239,6 +244,7 @@ def parse_book_row(row: Dict[str, str]) -> Dict[str, Any]:
     title = book["book_title"]
     book["goodreads_title"] = str(row.get("goodreads_title", "")).strip() or title
     book["cover_search_title"] = str(row.get("cover_search_title", "")).strip() or title
+    book["cover_image_url"] = ""  # Will be resolved after insertion
     return book
 
 
@@ -265,6 +271,83 @@ def diff_fields(old: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Dict[str,
         if old_val != new_val:
             diffs[col] = {"old": old_val, "new": new_val}
     return diffs
+
+
+# =============================================================================
+# Cover image resolution
+# =============================================================================
+
+# Shared HTTP client – reused across requests for connection pooling.
+_http_client: Optional[httpx.Client] = None
+
+
+def _get_http_client() -> httpx.Client:
+    """Lazily create a reusable httpx client."""
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.Client(timeout=10.0, follow_redirects=True)
+    return _http_client
+
+
+def _cover_from_open_library(title: str, author: str) -> Optional[str]:
+    """Search Open Library for a cover image. Returns URL or None."""
+    query = f"{title} {author}".strip() if author else title.strip()
+    if not query:
+        return None
+    url = f"https://openlibrary.org/search.json?q={quote(query)}&limit=1&fields=cover_i"
+    try:
+        resp = _get_http_client().get(url)
+        if resp.status_code == 200:
+            data = resp.json()
+            docs = data.get("docs", [])
+            if docs and docs[0].get("cover_i"):
+                cover_id = docs[0]["cover_i"]
+                return f"https://covers.openlibrary.org/b/id/{cover_id}-M.jpg"
+    except Exception:
+        pass
+    return None
+
+
+def _cover_from_google_books(title: str, author: str) -> Optional[str]:
+    """Search Google Books for a cover image. Returns URL or None."""
+    query = f"{title} {author}".strip() if author else title.strip()
+    if not query:
+        return None
+    url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&maxResults=1"
+    try:
+        resp = _get_http_client().get(url)
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data.get("items", [])
+            if items:
+                image_links = items[0].get("volumeInfo", {}).get("imageLinks", {})
+                thumb = image_links.get("thumbnail") or image_links.get("smallThumbnail")
+                if thumb:
+                    # Google returns http URLs; upgrade to https
+                    return thumb.replace("http://", "https://")
+    except Exception:
+        pass
+    return None
+
+
+def resolve_cover_url(title: str, author: str) -> str:
+    """
+    Resolve a book cover image URL using the same 3-step fallback as the frontend:
+    1. Open Library (title + author)
+    2. Google Books (title + author)
+    3. Open Library (title only, no author)
+    Returns the image URL or empty string if none found.
+    """
+    url = _cover_from_open_library(title, author)
+    if url:
+        return url
+    url = _cover_from_google_books(title, author)
+    if url:
+        return url
+    url = _cover_from_open_library(title, "")
+    if url:
+        return url
+    return ""
 
 
 # =============================================================================
@@ -323,6 +406,7 @@ def root():
             "POST   /upload-csv": "Upload a CSV (dedup + conflict detection)",
             "GET    /conflicts": "View pending conflicts from last upload",
             "POST   /confirm-updates": "Confirm updates for conflicted books",
+            "POST   /resolve-covers": "Resolve/refresh cover image URLs for all books",
             "POST   /recommend": "Get ranked recommendations (JSON body)",
         },
     }
@@ -545,12 +629,33 @@ async def upload_csv(file: UploadFile = File(...), x_admin_key: Optional[str] = 
     if added_books:
         save_db()
 
+    # Resolve cover images for all newly added books
+    covers_resolved = 0
+    if added_books:
+        print(f"[Covers] Resolving cover images for {len(added_books)} new books...")
+        for info in added_books:
+            bid = info["book_ID"]
+            if bid in books_db:
+                book = books_db[bid]
+                search_title = book.get("cover_search_title") or book.get("book_title", "")
+                author = book.get("book_author", "")
+                cover_url = resolve_cover_url(search_title, author)
+                book["cover_image_url"] = cover_url
+                if cover_url:
+                    covers_resolved += 1
+                    print(f"  [OK] {book.get('book_title', bid)}")
+                else:
+                    print(f"  [--] {book.get('book_title', bid)} (no cover found)")
+        save_db()
+        print(f"[Covers] Done. {covers_resolved}/{len(added_books)} covers found.")
+
     return {
         "message": (
             f"Processed {len(rows)} rows: "
             f"{len(added_books)} added, "
             f"{len(skipped_books)} skipped (duplicates), "
-            f"{len(conflicted_books)} conflicts."
+            f"{len(conflicted_books)} conflicts. "
+            f"Covers resolved: {covers_resolved}/{len(added_books)}."
         ),
         "added_books": added_books,
         "skipped_books": skipped_books,
@@ -617,6 +722,55 @@ def get_conflicts():
             "differences": diffs,
         })
     return {"conflicts": result, "count": len(result)}
+
+
+# ---- Resolve / refresh cover images ----------------------------------------
+
+
+@app.post("/resolve-covers")
+def resolve_covers(
+    force: bool = False,
+    x_admin_key: Optional[str] = Header(None),
+):
+    """
+    Resolve cover image URLs for books in the database.
+    By default, only resolves books with an empty cover_image_url.
+    Pass ?force=true to re-resolve ALL books (useful if covers have changed).
+    Requires X-Admin-Key header.
+    """
+    require_admin(x_admin_key)
+    if not books_db:
+        raise HTTPException(status_code=400, detail="No books in the database.")
+
+    resolved = 0
+    failed = 0
+    skipped = 0
+
+    for book in books_db.values():
+        existing = book.get("cover_image_url", "")
+        if existing and not force:
+            skipped += 1
+            continue
+        search_title = book.get("cover_search_title") or book.get("book_title", "")
+        author = book.get("book_author", "")
+        cover_url = resolve_cover_url(search_title, author)
+        book["cover_image_url"] = cover_url
+        if cover_url:
+            resolved += 1
+            print(f"  [OK] {book.get('book_title', '?')}")
+        else:
+            failed += 1
+            print(f"  [--] {book.get('book_title', '?')} (no cover found)")
+
+    save_db()
+
+    return {
+        "message": f"Cover resolution complete. {resolved} found, {failed} not found, {skipped} skipped (already had cover).",
+        "resolved": resolved,
+        "failed": failed,
+        "skipped": skipped,
+        "total": len(books_db),
+    }
 
 
 # ---- Recommendation --------------------------------------------------------

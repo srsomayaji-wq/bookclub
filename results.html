@@ -856,14 +856,19 @@
           reaction: null  // 'like' or null
         };
 
-        // Fetch cover using cover_search_title (may differ from display title)
-        // Tries: Open Library → Google Books → Open Library (title-only)
-        fetchBookCover(coverSearchTitle, book.book_author)
-          .then(function (coverUrl) {
-            showCover(coverUrl, displayTitle);
-            // Store the cover URL so it's saved if user clicks Save
-            currentBook.coverUrl = coverUrl;
-          });
+        // Use pre-resolved cover URL from backend if available;
+        // otherwise fall back to client-side lookup.
+        var backendCover = book.cover_image_url || '';
+        if (backendCover) {
+          showCover(backendCover, displayTitle);
+          currentBook.coverUrl = backendCover;
+        } else {
+          fetchBookCover(coverSearchTitle, book.book_author)
+            .then(function (coverUrl) {
+              showCover(coverUrl, displayTitle);
+              currentBook.coverUrl = coverUrl;
+            });
+        }
       }
 
       function getSavedBooks() {
